@@ -24,6 +24,8 @@ transactions_doubled = [
     ['bread', 'milk', 'butter', 'butter']
 ]
 
+num_transactions_double = len(transactions_doubled)
+
 transactions_generators = [
     ['a', 'b'],
     ['a', 'b'],
@@ -148,7 +150,7 @@ def test_find_closed_frequent_itemsets_transactions_with_generators():
 def test_find_generators_empty():
     itemset_counts = count_itemsets(transactions)
     closed_itemsets = find_closed_frequent_itemsets(itemset_counts, min_support)
-    generators = find_generators(closed_itemsets, itemset_counts)
+    generators = find_generators(closed_itemsets, itemset_counts, num_transactions)
 
     for closed_set in generators:
         assert len(generators[closed_set]) == 0
@@ -157,7 +159,7 @@ def test_find_generators_empty():
 def test_find_generators():
     itemset_counts = count_itemsets(transactions_generators)
     closed_itemsets = find_closed_frequent_itemsets(itemset_counts, min_support=3)
-    generators = find_generators(closed_itemsets, itemset_counts)
+    generators = find_generators(closed_itemsets, itemset_counts, num_transactions_gens)
 
     key = frozenset(['a', 'b'])
     assert key in generators
@@ -174,7 +176,7 @@ def test_find_generators():
 def test_generate_rules_from_generators_empty():
     itemset_counts = count_itemsets(transactions)
     closed_itemsets = find_closed_frequent_itemsets(itemset_counts, min_support=2)
-    generators = find_generators(closed_itemsets, itemset_counts)
+    generators = find_generators(closed_itemsets, itemset_counts, num_transactions)
     rules = generate_rules_from_generators(generators, closed_itemsets, itemset_counts, num_transactions)
 
     assert len(rules) == 0
@@ -183,7 +185,7 @@ def test_generate_rules_from_generators_empty():
 def test_generate_rules_from_generators():
     itemset_counts = count_itemsets(transactions_generators)
     closed_itemsets = find_closed_frequent_itemsets(itemset_counts, min_support=2)
-    generators = find_generators(closed_itemsets, itemset_counts)
+    generators = find_generators(closed_itemsets, itemset_counts, num_transactions_gens)
     rules = generate_rules_from_generators(generators, closed_itemsets, itemset_counts, num_transactions_gens)
 
     assert len(rules) == 2
@@ -200,7 +202,7 @@ def test_generate_rules_from_generators():
 def test_generate_rules_from_generators_bigger_support():
     itemset_counts = count_itemsets(transactions_generators)
     closed_itemsets = find_closed_frequent_itemsets(itemset_counts, min_support=3)
-    generators = find_generators(closed_itemsets, itemset_counts)
+    generators = find_generators(closed_itemsets, itemset_counts, num_transactions_gens)
     rules = generate_rules_from_generators(generators, closed_itemsets, itemset_counts, num_transactions_gens)
 
     assert len(rules) == 1
@@ -213,7 +215,7 @@ def test_generate_rules_from_generators_bigger_support():
 def test_filter_rules_big_support_small_rule_support():
     itemset_counts = count_itemsets(transactions_generators)
     closed_itemsets = find_closed_frequent_itemsets(itemset_counts, min_support=3)
-    generators = find_generators(closed_itemsets, itemset_counts)
+    generators = find_generators(closed_itemsets, itemset_counts, num_transactions_gens)
     rules = generate_rules_from_generators(generators, closed_itemsets, itemset_counts, num_transactions_gens)
     filtered = filter_rules(rules, min_rule_support, min_confidence=0.5)
 
@@ -227,7 +229,7 @@ def test_filter_rules_big_support_small_rule_support():
 def test_filter_rules_big_support_big_rule_support():
     itemset_counts = count_itemsets(transactions_generators)
     closed_itemsets = find_closed_frequent_itemsets(itemset_counts, min_support=3)
-    generators = find_generators(closed_itemsets, itemset_counts)
+    generators = find_generators(closed_itemsets, itemset_counts, num_transactions_gens)
     rules = generate_rules_from_generators(generators, closed_itemsets, itemset_counts, num_transactions_gens)
     filtered = filter_rules(rules, min_support=0.9, min_confidence=0.5)
 
@@ -237,7 +239,7 @@ def test_filter_rules_big_support_big_rule_support():
 def test_filter_rules_small_support():
     itemset_counts = count_itemsets(transactions_generators)
     closed_itemsets = find_closed_frequent_itemsets(itemset_counts, min_support=2)
-    generators = find_generators(closed_itemsets, itemset_counts)
+    generators = find_generators(closed_itemsets, itemset_counts, num_transactions_gens)
     rules = generate_rules_from_generators(generators, closed_itemsets, itemset_counts, num_transactions_gens)
 
     assert len(rules) == 2

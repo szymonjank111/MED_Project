@@ -1,12 +1,21 @@
 import pandas as pd
-import numpy as np
 from itertools import combinations
 from collections import defaultdict
+import time
+from mlxtend.preprocessing import TransactionEncoder
+from mlxtend.frequent_patterns import apriori, association_rules
 
 
-def load_data(path):
+def load_data_txt(path):
     with open(path, 'r') as file:
         transactions = [line.strip().split(',') for line in file]
+    return transactions
+
+
+def load_data_csv(path):
+    df = pd.read_csv(path, sep=',')
+    grouped = df.groupby(['Member_number', 'Date'])['itemDescription'].apply(list)
+    transactions = grouped.tolist()
     return transactions
 
 
@@ -38,7 +47,7 @@ def find_closed_frequent_itemsets(itemset_counts, min_support):
     return closed_itemsets
 
 
-def find_generators(closed_itemsets, itemset_counts):
+def find_generators(closed_itemsets, itemset_counts, num_transactions, epsilon = 0):
     generators = dict()
 
     for closed_set, closed_support in closed_itemsets:
@@ -47,7 +56,7 @@ def find_generators(closed_itemsets, itemset_counts):
             frozenset(subset)
             for r in range(1, len(closed_set))
             for subset in combinations(closed_set, r)
-            if itemset_counts.get(frozenset(subset), 0) == closed_support
+            if (itemset_counts.get(frozenset(subset), 0) - closed_support) / num_transactions <= epsilon
         ]
 
         minimal_generators = []
@@ -96,30 +105,99 @@ def filter_rules(rules, min_support=1.0, min_confidence=0.0):
         for r2 in filtered:
             if r1 == r2:
                 continue
+
             if (r2['generator'].issubset(r1['generator']) and
                 r1['consequent'] == r2['consequent'] and
                 r1['confidence'] <= r2['confidence']):
                 redundant = True
                 break
+
+            if (r1['generator'] == r2['consequent'] and
+                r1['consequent'] == r2['generator']):
+                if r1['confidence'] <= r2['confidence']:
+                    redundant = True
+                    break
+
         if not redundant:
             non_redundant.append(r1)
 
     return non_redundant
 
 
-if __name__ == "__main__":
-    transactions = load_data("groceries.txt")
+def calculate_coverage(rules, transactions):
+    covered_transactions = set()
+
+    for i, transaction in enumerate(transactions):
+        transaction_set = set(transaction)
+        for rule in rules:
+            rule_items = rule['generator'] | rule['consequent']
+            if rule_items.issubset(transaction_set):
+                covered_transactions.add(i)
+                break
+
+    coverage = len(covered_transactions) / len(transactions) if transactions else 0
+    return coverage
+
+
+def apriori_results(transactions):
+    start_time = time.time()
+    te = TransactionEncoder()
+    te_ary = te.fit(transactions).transform(transactions)
+    df = pd.DataFrame(te_ary, columns=te.columns_)
+
+    frequent_itemsets = apriori(df, min_support=0.001, use_colnames=True)
+
+    rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=0.1)
+    end_time = time.time()
+
+    covered_transactions = set()
+
+    for i, transaction in enumerate(transactions):
+        transaction_set = set(transaction)
+        for _, rule in rules.iterrows():
+            rule_items = set(rule['antecedents']) | set(rule['consequents'])
+            if rule_items.issubset(transaction_set):
+                covered_transactions.add(i)
+                break
+
+    coverage = len(covered_transactions) / len(transactions) if transactions else 0
+
+    print(f"\n\nAPRIORI:\n")
+    print('Liczba reguł: ', len(rules))
+    print(f"Pokrycie zbioru przez reguły: {coverage:.2%}")
+    print(f"Czas wykonania: {end_time - start_time:.2f} sekund")
+
+
+def main():
+    # transactions = load_data_txt("groceries.txt")
+    transactions = load_data_csv("Groceries_dataset.csv")
     num_transactions = len(transactions)
     min_support = 2
-    min_rule_support = 0.1
-    min_confidence = 0.5
+    min_rule_support = 0.001
+    min_confidence = 0.1
+    epsilon = 0.05
 
+    start_time = time.time()
     itemset_counts = count_itemsets(transactions)
     closed_itemsets = find_closed_frequent_itemsets(itemset_counts, min_support)
-    generators = find_generators(closed_itemsets, itemset_counts)
+    generators = find_generators(closed_itemsets, itemset_counts, num_transactions, epsilon)
     rules = generate_rules_from_generators(generators, closed_itemsets, itemset_counts, num_transactions)
     final_rules = filter_rules(rules, min_rule_support, min_confidence)
+    end_time = time.time()
 
     for rule in final_rules:
         print(f"{rule['generator']} => {rule['consequent']}, "
               f"support={rule['support']}, confidence={rule['confidence']:.2f}")
+
+    print('Liczba reguł: ', len(final_rules))
+
+    coverage = calculate_coverage(final_rules, transactions)
+    print(f"Pokrycie zbioru przez reguły: {coverage:.2%}")
+
+    print(f"Czas wykonania: {end_time - start_time:.2f} sekund")
+
+    # apriori_results(transactions)
+
+
+if __name__ == "__main__":
+    main()
