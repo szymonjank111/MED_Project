@@ -1,111 +1,125 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 from itertools import combinations
 from collections import defaultdict
 
-# === 1. Wczytywanie danych ===
-def load_transactions(filepath):
-    df = pd.read_csv(filepath)
-    transactions = df.groupby('Transaction')['Item'].apply(set).tolist()
+
+def load_data(path):
+    with open(path, 'r') as file:
+        transactions = [line.strip().split(',') for line in file]
     return transactions
 
-# === 2. Obliczanie supportu ===
-def get_support(itemset, transactions):
-    return sum(1 for transaction in transactions if itemset.issubset(transaction)) / len(transactions)
 
-# === 3. Generowanie częstych zbiorów ===
-def get_frequent_itemsets(transactions, min_support=0.02):
-    itemsets = defaultdict(int)
+def count_itemsets(transactions):
+    itemset_counts = defaultdict(int)
     for transaction in transactions:
-        for i in range(1, len(transaction)+1):
-            for subset in combinations(transaction, i):
-                itemsets[frozenset(subset)] += 1
+        transaction = set(transaction)
+        for r in range(1, len(transaction) + 1):
+            for combo in combinations(transaction, r):
+                itemset_counts[frozenset(combo)] += 1
+    return itemset_counts
 
-    num_transactions = len(transactions)
-    frequent = {k: v/num_transactions for k, v in itemsets.items() if v/num_transactions >= min_support}
-    return frequent
 
-# === 4. Zamknięte zbiory ===
-def get_closed_itemsets(frequent_itemsets):
-    closed = {}
-    for itemset in frequent_itemsets:
+def find_closed_frequent_itemsets(itemset_counts, min_support):
+    frequent_itemsets = {
+        itemset: count for itemset, count in itemset_counts.items()
+        if count >= min_support
+    }
+
+    closed_itemsets = []
+    for itemset, support in frequent_itemsets.items():
         is_closed = True
-        for other in frequent_itemsets:
-            if itemset < other and frequent_itemsets[itemset] == frequent_itemsets[other]:
+        for other_itemset, other_support in frequent_itemsets.items():
+            if itemset < other_itemset and support == other_support:
                 is_closed = False
                 break
         if is_closed:
-            closed[itemset] = frequent_itemsets[itemset]
-    return closed
+            closed_itemsets.append((set(itemset), support))
+    return closed_itemsets
 
-# === 5. Generatory ===
-def get_generators(closed_itemsets, frequent_itemsets):
-    generators = defaultdict(list)
-    for closed in closed_itemsets:
-        for itemset in frequent_itemsets:
-            if itemset.issubset(closed) and frequent_itemsets[itemset] == closed_itemsets[closed]:
-                is_minimal = all(not other.issubset(itemset) or other == itemset for other in frequent_itemsets if frequent_itemsets[other] == closed_itemsets[closed])
-                if is_minimal:
-                    generators[closed].append(itemset)
+
+def find_generators(closed_itemsets, itemset_counts):
+    generators = dict()
+
+    for closed_set, closed_support in closed_itemsets:
+        closed_fset = frozenset(closed_set)
+        candidate_generators = [
+            frozenset(subset)
+            for r in range(1, len(closed_set))
+            for subset in combinations(closed_set, r)
+            if itemset_counts.get(frozenset(subset), 0) == closed_support
+        ]
+
+        minimal_generators = []
+        for g in candidate_generators:
+            if not any(other < g for other in candidate_generators if other != g):
+                minimal_generators.append(g)
+
+        generators[closed_fset] = minimal_generators
+
     return generators
 
-# === 6. Reguły ===
-def generate_non_redundant_rules(closed_itemsets, generators, transactions):
+
+def generate_rules_from_generators(generators, closed_itemsets, itemset_counts, num_transactions):
     rules = []
-    for closed, gens in generators.items():
+    support_lookup = {
+        frozenset(itemset): support for itemset, support in closed_itemsets
+    }
+
+    for closed_fset, gens in generators.items():
+        closed_support = support_lookup[closed_fset]
+
         for gen in gens:
-            consequent = closed - gen
+            consequent = closed_fset - gen
             if consequent:
-                support = get_support(closed, transactions)
-                confidence = support / get_support(gen, transactions)
+                gen_support = itemset_counts.get(gen, 0)
+                confidence = closed_support / gen_support if gen_support > 0 else 0
+
                 rules.append({
-                    'antecedent': set(gen),
+                    'generator': set(gen),
                     'consequent': set(consequent),
-                    'support': support,
+                    'support': closed_support / num_transactions,
                     'confidence': confidence
                 })
     return rules
 
-# === 7. Wizualizacja ===
-def plot_top_items(frequent_itemsets, top_n=10):
-    single_items = {list(k)[0]: v for k, v in frequent_itemsets.items() if len(k) == 1}
-    top_items = dict(sorted(single_items.items(), key=lambda x: x[1], reverse=True)[:top_n])
-    plt.figure(figsize=(8, 5))
-    sns.barplot(x=list(top_items.values()), y=list(top_items.keys()), palette="viridis")
-    plt.title(f"Top {top_n} najczęstszych produktów")
-    plt.xlabel("Support")
-    plt.ylabel("Produkt")
-    plt.tight_layout()
-    plt.show()
 
-def plot_rules(rules):
-    plt.figure(figsize=(8, 6))
-    supports = [r['support'] for r in rules]
-    confidences = [r['confidence'] for r in rules]
-    plt.scatter(supports, confidences, alpha=0.6, edgecolor='k')
-    plt.title("Reguły asocjacyjne: confidence vs support")
-    plt.xlabel("Support")
-    plt.ylabel("Confidence")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+def filter_rules(rules, min_support=1.0, min_confidence=0.0):
+    filtered = [
+        r for r in rules
+        if r['support'] >= min_support and r['confidence'] >= min_confidence
+    ]
 
-# === 8. Uruchomienie ===
+    non_redundant = []
+    for r1 in filtered:
+        redundant = False
+        for r2 in filtered:
+            if r1 == r2:
+                continue
+            if (r2['generator'].issubset(r1['generator']) and
+                r1['consequent'] == r2['consequent'] and
+                r1['confidence'] <= r2['confidence']):
+                redundant = True
+                break
+        if not redundant:
+            non_redundant.append(r1)
+
+    return non_redundant
+
+
 if __name__ == "__main__":
-    filepath = 'example_groceries.csv'
+    transactions = load_data("groceries.txt")
+    num_transactions = len(transactions)
+    min_support = 2
+    min_rule_support = 0.1
+    min_confidence = 0.5
 
-    transactions = load_transactions(filepath)
-    frequent_itemsets = get_frequent_itemsets(transactions, min_support=0.05)
-    closed_itemsets = get_closed_itemsets(frequent_itemsets)
-    generators = get_generators(closed_itemsets, frequent_itemsets)
-    rules = generate_non_redundant_rules(closed_itemsets, generators, transactions)
+    itemset_counts = count_itemsets(transactions)
+    closed_itemsets = find_closed_frequent_itemsets(itemset_counts, min_support)
+    generators = find_generators(closed_itemsets, itemset_counts)
+    rules = generate_rules_from_generators(generators, closed_itemsets, itemset_counts, num_transactions)
+    final_rules = filter_rules(rules, min_rule_support, min_confidence)
 
-    plot_top_items(frequent_itemsets)
-    plot_rules(rules)
-
-    # Wyświetl 5 przykładowych reguł
-    for rule in rules[:5]:
-        print(f"{rule['antecedent']} => {rule['consequent']}, "
-              f"support: {rule['support']:.3f}, confidence: {rule['confidence']:.3f}")
+    for rule in final_rules:
+        print(f"{rule['generator']} => {rule['consequent']}, "
+              f"support={rule['support']}, confidence={rule['confidence']:.2f}")
