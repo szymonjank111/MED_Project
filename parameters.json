@@ -1,0 +1,6 @@
+{
+  "min_support": 2,
+  "min_rule_support": 0.01,
+  "min_confidence": 0.05,
+  "epsilon": 0.1
+}
