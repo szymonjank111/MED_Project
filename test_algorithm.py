@@ -1,5 +1,5 @@
 import pytest
-from main import (
+from algorithm import (
     count_itemsets,
     find_closed_frequent_itemsets,
     find_generators,

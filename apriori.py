@@ -42,6 +42,6 @@ def apriori_results(transactions, min_support=0.1, min_confidence=0.1):
 
 
 transactions = load_data_csv("data/Groceries_dataset.csv")
-# apriori_results(transactions, 0.01, 0.05)
-print(len(transactions))
-print(transactions[0])
+apriori_results(transactions, 0.0008, 0.01)
+# print(len(transactions))
+# print(transactions[0])
